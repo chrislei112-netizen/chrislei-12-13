@@ -1,0 +1,266 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>SDGs 不塑永續-淨灘</title>
+  <style>
+    :root{
+      --header-height:64px;
+      --trash-count:50;
+      --sand-color:#f3d9a5;
+      --sea-color:#8bd3ff;
+    }
+    html,body{height:100%;margin:0;font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, "Noto Sans TC", 'Helvetica Neue', Arial;}
+    /* 背景：海與沙灘 */
+    .page{
+      height:100%;
+      background: linear-gradient(to top, var(--sand-color) 40%, #ffeebb 45%, #bfe8ff 50%, var(--sea-color) 100%);
+      position:relative;overflow:hidden;
+    }
+    /* 波浪裝飾 */
+    .waves{
+      position:absolute;left:0;right:0;top:40%;height:160px;pointer-events:none;opacity:0.6;
+      background: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1440 160"><path fill="%23bfe8ff" d="M0,64L48,90.7C96,117,192,171,288,170.7C384,171,480,117,576,96C672,75,768,85,864,112C960,139,1056,181,1152,181.3C1248,181,1344,139,1392,117.3L1440,96L1440,0L1392,0C1344,0,1248,0,1152,0C1056,0,960,0,864,0C768,0,672,0,576,0C480,0,384,0,288,0C192,0,96,0,48,0L0,0Z"></path></svg>') bottom/cover no-repeat;
+    }
+    header{
+      position:fixed;left:16px;top:10px;z-index:50;display:flex;align-items:center;height:var(--header-height);
+    }
+    header h1{margin:0;font-size:22px;font-weight:800;letter-spacing:1px;color:#0b3d91;}
+    .scoreboard{
+      position:fixed;right:16px;top:10px;z-index:50;text-align:right;background:rgba(255,255,255,0.75);padding:8px 12px;border-radius:8px;backdrop-filter:blur(4px);
+      box-shadow:0 4px 12px rgba(0,0,0,0.08);
+    }
+    .scoreboard .points{font-weight:700;font-size:16px;color:#0b3d91}
+    .scoreboard .progress{font-size:13px;color:#333;margin-top:2px}
+
+    /* 遊戲區（可用於定位垃圾） */
+    .game-area{position:absolute;left:0;right:0;top:0;bottom:0;}
+    /* 垃圾容器，限制在下半部(50% ~ 88%) */
+    .trash-layer{position:absolute;left:0;right:0;top:50%;bottom:6%;pointer-events:auto;}
+
+    .trash{
+      position:absolute;transform-origin:center center;cursor:pointer;user-select:none;touch-action:manipulation;
+      transition:transform 280ms cubic-bezier(.2,.9,.2,1),opacity 280ms ease; display:flex;align-items:center;justify-content:center;
+      will-change:transform,opacity;
+      filter:drop-shadow(0 6px 8px rgba(0,0,0,0.12));
+    }
+    .trash .label{font-size:20px;pointer-events:none;}
+
+    /* 不同體積的樣式 */
+    .small{width:36px;height:36px}
+    .medium{width:54px;height:54px}
+    .large{width:78px;height:78px}
+
+    /* 點擊收集效果 */
+    .collected{transform:scale(0.25) rotate(0deg) translateY(-20px);opacity:0}
+
+    /* 任務成功覆蓋 */
+    .overlay{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.45);z-index:200;visibility:hidden;opacity:0;transition:opacity .25s ease}
+    .overlay.show{visibility:visible;opacity:1}
+    .panel{background:white;padding:28px;border-radius:12px;text-align:center;min-width:320px;box-shadow:0 12px 40px rgba(0,0,0,0.2)}
+    .panel h2{margin:0 0 12px 0;font-size:24px;color:#0b3d91}
+    .panel p{margin:0 0 18px 0;color:#333}
+    .btn{display:inline-block;padding:10px 14px;border-radius:10px;font-weight:700;text-decoration:none;border:none;cursor:pointer}
+    .btn.primary{background:#0b60d1;color:white}
+    .btn.ghost{background:transparent;border:1px solid #ccc;color:#333;margin-left:8px}
+
+    /* 小提示區 */
+    .legend{position:fixed;left:16px;bottom:12px;background:rgba(255,255,255,0.9);padding:8px 12px;border-radius:10px;font-size:13px;color:#333;z-index:60}
+
+    @media (max-width:520px){
+      header h1{font-size:18px}
+      .scoreboard{right:8px;top:8px;padding:6px 10px}
+    }
+
+  </style>
+</head>
+<body>
+  <div class="page">
+    <div class="waves" aria-hidden="true"></div>
+
+    <header>
+      <h1>SDGs 不塑永續-淨灘</h1>
+    </header>
+
+    <div class="scoreboard" aria-live="polite">
+      <div class="points">分數：<span id="score">0</span></div>
+      <div class="progress">已撿：<span id="collected">0</span>/<span id="total">50</span></div>
+    </div>
+
+    <main class="game-area" role="application" aria-label="淨灘遊戲區">
+      <div class="trash-layer" id="trashLayer"></div>
+    </main>
+
+    <div class="legend">點擊海灘上的垃圾來撿取並獲得積分（體積越大分數越高）</div>
+
+    <div class="overlay" id="overlay" role="dialog" aria-modal="true">
+      <div class="panel">
+        <h2 id="overlayTitle">任務成功</h2>
+        <p id="overlayMsg">你已完成淨灘！總分：<strong id="finalScore">0</strong></p>
+        <div>
+          <button class="btn primary" id="nextBtn">前往下一關</button>
+          <button class="btn ghost" id="restartBtn">再玩一次</button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    // 垃圾類型設定：名稱、顯示（使用 emoji 作為圖示）、體積分類與對應分數
+    const TRASH_TYPES = [
+      {name:'保特瓶', icon:'🥤', size:'medium', points:10},
+      {name:'紙類', icon:'🧾', size:'small', points:5},
+      {name:'餐盒', icon:'🥡', size:'medium', points:12},
+      {name:'塑膠袋', icon:'🧺', size:'small', points:6},
+      {name:'保麗龍', icon:'📦', size:'large', points:20},
+      {name:'飲料杯', icon:'🍶', size:'small', points:5},
+      {name:'漂流雜物', icon:'🪵', size:'large', points:18}
+    ];
+
+    const TOTAL = 50;
+    const trashLayer = document.getElementById('trashLayer');
+    const scoreEl = document.getElementById('score');
+    const collectedEl = document.getElementById('collected');
+    const totalEl = document.getElementById('total');
+    const overlay = document.getElementById('overlay');
+    const finalScoreEl = document.getElementById('finalScore');
+
+    totalEl.textContent = TOTAL;
+
+    let score = 0;
+    let collected = 0;
+
+    function rand(min, max){ return Math.random()*(max-min)+min }
+
+    // 生成垃圾元素
+    function spawnTrash(){
+      for(let i=0;i<TOTAL;i++){
+        const t = TRASH_TYPES[Math.floor(Math.random()*TRASH_TYPES.length)];
+        const el = document.createElement('div');
+        // 給予體積 class (small/medium/large)
+        el.className = 'trash ' + t.size;
+        el.dataset.points = t.points;
+        el.dataset.name = t.name;
+
+        // 隨機 rotation
+        const rot = Math.floor(rand(-50,50));
+        // 隨機微幅傾斜和 scale
+        const scaleVar = rand(0.85,1.15);
+
+        // 隨機位置：水平 2%~90%，垂直限制在容器內的高度（容器本身是從 50% 到 bottom 的區域）
+        // 使用百分比以配合響應式
+        const leftPct = rand(2,94);
+        const topPct = rand(4,86);
+
+        el.style.left = leftPct + '%';
+        el.style.top = topPct + '%';
+        el.style.transform = `rotate(${rot}deg) scale(${scaleVar})`;
+
+        // 內部顯示
+        const label = document.createElement('div');
+        label.className = 'label';
+        label.textContent = t.icon;
+        el.appendChild(label);
+
+        // 加上 title 顯示名稱與分數（方便 accessibility）
+        el.title = `${t.name} — 分數 ${t.points}`;
+
+        // 點擊事件：收集
+        el.addEventListener('click', onCollect);
+
+        trashLayer.appendChild(el);
+      }
+    }
+
+    // 收集邏輯
+    function onCollect(e){
+      const el = e.currentTarget;
+      // 防止重複點擊
+      if(el.classList.contains('collected')) return;
+      const pts = Number(el.dataset.points) || 0;
+      // 動畫：縮小並淡出
+      el.classList.add('collected');
+
+      // 更新計分
+      score += pts;
+      collected += 1;
+      scoreEl.textContent = score;
+      collectedEl.textContent = collected;
+
+      // 小浮動分數提示
+      showFloat(+pts, el);
+
+      // 移除元素（等動畫結束）
+      setTimeout(()=>{ el.remove(); }, 350);
+
+      // 全部收完
+      if(collected >= TOTAL){
+        setTimeout(showOverlay, 380);
+      }
+    }
+
+    function showFloat(pts, el){
+      const f = document.createElement('div');
+      f.textContent = `+${pts}`;
+      f.style.position = 'absolute';
+      f.style.left = el.style.left;
+      // 將 top 往上調一些
+      const numericTop = parseFloat(el.style.top);
+      f.style.top = (numericTop - 8) + '%';
+      f.style.transform = 'translate(-50%,0)';
+      f.style.fontWeight = '800';
+      f.style.padding = '2px 6px';
+      f.style.borderRadius = '6px';
+      f.style.background = 'rgba(255,255,255,0.95)';
+      f.style.boxShadow = '0 6px 12px rgba(0,0,0,0.12)';
+      f.style.zIndex = 120;
+      f.style.transition = 'transform 700ms ease, opacity 700ms ease';
+      trashLayer.appendChild(f);
+
+      // 動畫
+      requestAnimationFrame(()=>{
+        f.style.transform = 'translate(-50%,-48px)';
+        f.style.opacity = '0';
+      });
+      setTimeout(()=>f.remove(), 720);
+    }
+
+    function showOverlay(){
+      finalScoreEl.textContent = score;
+      overlay.classList.add('show');
+    }
+
+    // 按鈕行為
+    document.getElementById('nextBtn').addEventListener('click', ()=>{
+      // 前往下一關：示範性地重置遊戲並增加目標（或導向其他頁面）
+      // 這裡簡單重製並保留目前分數為起始
+      overlay.classList.remove('show');
+      resetGame();
+    });
+    document.getElementById('restartBtn').addEventListener('click', ()=>{
+      overlay.classList.remove('show');
+      resetGame(true);
+    });
+
+    function resetGame(fullReset=false){
+      // 清空
+      trashLayer.innerHTML = '';
+      score = fullReset ? 0 : Math.floor(score*0.5); // 如果非完整重來，保留一半成績作為獎勵
+      collected = 0;
+      scoreEl.textContent = score;
+      collectedEl.textContent = collected;
+      // 重新產生垃圾
+      spawnTrash();
+    }
+
+    // 初始化
+    spawnTrash();
+
+    // 提示：使用鍵盤按鍵 'r' 也能重新開始
+    window.addEventListener('keydown', (e)=>{ if(e.key.toLowerCase()==='r'){ resetGame(true); } });
+
+  </script>
+</body>
+</html>
